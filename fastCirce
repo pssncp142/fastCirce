@@ -1,0 +1,40 @@
+#!/usr/bin/python
+#-----------------------------------------------------------------------------#
+# Yigit Dallilar, UF, 05/30/2015                                              #
+# Contact: ydallilar@ufl.edu                                                  #
+#-----------------------------------------------------------------------------#
+# CIRCE fast photometry pipeline tools                                        #
+# -fastCirce     version=1.0.1                                                #
+# Main executable for the file for the software.                              #
+# For a single configuration file use as:                                     #
+# % fastCirce config.txt                                                      #
+# OR for several configuration files:                                         #
+# % fastCirce @configs                                                        #
+# where configs is the file which contains the name of configuration files    #
+# line by line.                                                               #
+#-----------------------------------------------------------------------------#
+
+from fastCirceLibEng import fastCirceLibEng
+import sys
+
+
+def main():
+    confs = sys.argv[1]
+
+    Engs = []
+
+    if confs[0] == '@':
+        conf_in = open(confs[1:], 'r').read().split()
+    else:
+	conf_in = [confs]
+      
+    for conf in conf_in:
+    	Engs.append(fastCirceLibEng(conf))
+
+    for Eng in Engs: 
+       Eng.initialize()
+       Eng.runAll()
+       
+
+if __name__ == '__main__':
+   main()
