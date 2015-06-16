@@ -201,10 +201,10 @@ def patt_corr(obj):
                 for k in arr:
                     im[:,64*(2*k+1):64*(2*k+2)] -= odd_corr
                     im[:,64*(2*k):64*(2*k+1)] -= evn_corr
-                    #im[:,64*(2*k+1):64*(2*k+2)] -= \
-                    #    median(im[:,64*(2*k+1):64*(2*k+2)])
-                    #im[:,64*(2*k):64*(2*k+1)] -= \
-                    #    median(im[:,64*(2*k):64*(2*k+1)])
+                    im[:,64*(2*k+1):64*(2*k+2)] -= \
+                        median(im[:,64*(2*k+1):64*(2*k+2)])
+                    im[:,64*(2*k):64*(2*k+1)] -= \
+                        median(im[:,64*(2*k):64*(2*k+1)])
                 hdul[j].data = im - median(im)
                
             write_data(hdul, f_out, obj, ma, i)
