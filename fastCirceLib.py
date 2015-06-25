@@ -22,10 +22,10 @@ t_c = 24*60*60
 
 def do_linearity(obj):
 
-    coef = [0.9701104, 1.106431e-5, -7.398100e-10, 2.490898e-14]
+    pol = poly1d([2.490898e-14, -7.398100e-10, 1.106431e-5, 0.9701104, 0 ])
     print sep
     print 'Starting linearity correction...'
-    dark = fits.open(obj.mst_dark)[0].data
+    dark = fits.open(obj.mst_dark)
     for f in obj.files:
         hdul = fits.open(obj.path + f)
         print 'Processing ', obj.path + f
@@ -39,9 +39,14 @@ def do_linearity(obj):
         w_f = hdul[0].header['W_Y_BEG']
         w_l = hdul[0].header['W_Y_END']
         for i in arange(1,len(hdul)):
-            im = hdul[i].data - dark[w_f:w_l+1,:]
-            hdul[i].data = im*coef[0] + im**2*coef[1] + \
-                im**3*coef[2] + im**4*coef[3]
+            xx = (i-1) % hdul_out[0].header['NRAMPS'] + 1
+            # Add three options  here
+            im = hdul[i].data - dark[1].data
+            #im = hdul[i].data - dark[xx].data
+            #im = hdul[i].data - dark[0].data[w_f:w_l+1,:]
+            hdul[i].data = pol(im)
+            #hdul[i].data = im*coef[0] + im**2*coef[1] + \
+            #    im**3*coef[2] + im**4*coef[3]
             hdul_out.append(fits.ImageHDU(hdul[i].data, header=hdul[i].header))
         hdul_out = fits.HDUList(hdul_out)
         hdul_out.writeto('linearity/' + f, clobber=True)    
@@ -314,10 +319,10 @@ def final_copy(obj):
             w_l = hdul[0].header['W_Y_END'] 
             im = zeros([w_l-w_f+1, 2048, len(hdul)])
             for j in range(1, len(hdul)):
-                im[:,:,j-1] = hdul[j].data
+                im[:,:,j-1] = hdul[j].data/hdul[j].header['EXPTIME']
 
             if obj.comb_ramp == 1:
-                hdul.append(fits.ImageHDU(median(im[:,:,:], axis=2)))
+                hdul.append(fits.ImageHDU(median(im, axis=2)))
             write_data(hdul, f_out, obj, ma, i)
 
 #-----------------------------------------------------------------------------#
