@@ -13,10 +13,12 @@ import pyfits as fits
 import re
 import os 
 from numpy import *
+from scipy.optimize import curve_fit
 
 sep = '-----------------------------------------------------------------------'
 patt = 'CIRCE((\w+)-(\w+)-(\w+)-(\w+)).fits'
 t_c = 24*60*60
+linf = lambda x, a: a*x
 numcpu = 5
 
 #------------------------------------------------------------------------------#
@@ -25,7 +27,9 @@ numcpu = 5
 
 def do_linearity(obj):
 
-    pol = poly1d([2.490898e-14, -7.398100e-10, 1.106431e-5, 0.9701104, 0 ])
+    #pol = poly1d([2.490898e-14, -7.398100e-10, 1.106431e-5, 0.9701104, 0 ])
+    pol = poly1d([  5.84302932e-14,  -2.49974727e-09,   3.95082939e-05,
+         9.74597509e-01,   0])    
     print sep
     print 'Starting linearity correction...'
     dark = fits.open(obj.mst_dark)
@@ -46,38 +50,6 @@ def do_linearity(obj):
         for p in procs: p.start()
         for p in procs: p.join()
 
-
-'''
-def do_linearity(obj):
-
-    pol = poly1d([2.490898e-14, -7.398100e-10, 1.106431e-5, 0.9701104, 0 ])
-    print sep
-    print 'Starting linearity correction...'
-    dark = fits.open(obj.mst_dark)
-    for f in obj.files:
-        hdul = fits.open(obj.path + f)
-        print 'Processing ', obj.path + f
-        hdul_out = [fits.PrimaryHDU()]
-        hdul_out[0].header.update('W_Y_BEG', hdul[0].header['W_Y_BEG'])
-        hdul_out[0].header.update('W_Y_END', hdul[0].header['W_Y_END'])
-        hdul_out[0].header.update('NRAMPS', hdul[0].header['NRAMPS'])
-        hdul_out[0].header.update('NGROUPS', hdul[0].header['NGROUPS'])
-        hdul_out[0].header.update('NREADS', hdul[0].header['NREADS'])
-        hdul_out[0].header.update('MJD', hdul[0].header['MJD'])
-        w_f = hdul[0].header['W_Y_BEG']
-        w_l = hdul[0].header['W_Y_END']
-        for i in arange(1,len(hdul)):
-            xx = (i-1) % hdul_out[0].header['NRAMPS'] + 1
-            im = hdul[i].data - dark[1].data
-            #im = hdul[i].data - dark[xx].data
-            #im = hdul[i].data - dark[0].data[w_f:w_l+1,:]
-            hdul[i].data = pol(im)
-            #hdul[i].data = im*coef[0] + im**2*coef[1] + \
-            #    im**3*coef[2] + im**4*coef[3]
-            hdul_out.append(fits.ImageHDU(hdul[i].data, header=hdul[i].header))
-        hdul_out = fits.HDUList(hdul_out)
-        hdul_out.writeto('linearity/' + f, clobber=True)    
-'''
 #------------------------------------------------------------------------------#
 # Frame Subtraction functions                                                  #
 #------------------------------------------------------------------------------#
@@ -151,6 +123,32 @@ def flat_divide(obj):
 #------------------------------------------------------------------------------#
 # Pattern correction function                                                  #
 #------------------------------------------------------------------------------#
+
+def patt_corr_new(obj):
+    
+    flat = fits.open(obj.mast_flat)[0].data
+    print sep
+    print 'Start pickup noise correction...'
+
+    #hdu = fits.PrimaryHDU(flat)
+    #hdu.writeto('test.fits', clobber=True)
+
+    sz = len(obj.files)
+
+    for j in range(sz/numcpu):
+        procs = [mp.Process(target=func_patt_corr_new, args=(obj, flat, i)) \
+                     for i in (arange(numcpu)+numcpu*j)]
+            
+        for p in procs: p.start()
+        for p in procs: p.join()
+        
+    left = sz % numcpu
+    if left != 0:
+        procs = [mp.Process(target=func_patt_corr_new, args=(obj, flat, i)) \
+                     for i in arange(sz-left, sz)]
+             
+        for p in procs: p.start()
+        for p in procs: p.join()
 
 def patt_corr(obj):
     
@@ -268,9 +266,6 @@ def final_copy(obj):
 def write_data(hdul, f_out, obj, ma, i):
 
     hdul.writeto(f_out % (obj.frame_mod, ma.group(1), i), clobber=True)
-    #print 'Ramp %02d written to %s' % (i, f_out % \
-    #            (obj.frame_mod, ma.group(1), i))
-
 
 #-----------------------------------------------------------------------------#
 # Functions that does the job                                                 #
@@ -392,6 +387,49 @@ def func_flat_divide(obj, flat, i):
                 hdul[j].data /= flat_l
             hdul[j].data -= median(hdul[j].data)
 
+        write_data(hdul, f_out, obj, ma, i)
+
+def func_patt_corr_new(obj, flat, i):
+
+    f = obj.files[i]
+
+    f_in = obj.last_dir + 'mod' + obj.frame_mod + '_%s_*.fits'  
+    f_out = 'pattern_corr/mod%s_%s_%02d.fits'
+
+    ma = re.match(patt, f)
+    print 'Processing : ', f
+    fs = os.popen('ls ' + f_in % ma.group(1)).read().split()
+    for i in range(len(fs)):
+        hdul = fits.open(fs[i])
+        print fs[i]
+        w_f = hdul[0].header['W_Y_BEG'] 
+        w_l = hdul[0].header['W_Y_END'] 
+        y_r = w_l - w_f + 1
+        cflat = flat[w_f:w_l+1, :]
+        
+        for j in range(1, len(hdul)):
+            im = hdul[j].data
+            nosky = zeros([y_r, 2048])
+            nosky += im
+            ndx = where((cflat > 0) & (cflat < 10))
+            out = curve_fit(linf, cflat[ndx], nosky[ndx])
+            nosky -= out[0]*cflat
+            odd_chan = zeros([y_r, 64, 16])
+            evn_chan = zeros([y_r, 64, 16])
+            for k in range(16):
+                odd_chan[:,:,k] = nosky[:,64*(2*k+1):64*(2*k+2)]
+                evn_chan[:,:,k] = nosky[:,64*(2*k):64*(2*k+1)]
+            odd_corr = median(odd_chan, axis=2)
+            evn_corr = median(evn_chan, axis=2)
+            odd_corr -= median(odd_corr)
+            evn_corr -= median(evn_corr)
+
+            for k in range(16):
+                nosky[:,64*(2*k+1):64*(2*k+2)] -= odd_corr
+                nosky[:,64*(2*k):64*(2*k+1)] -= evn_corr
+
+            hdul[j].data = nosky + cflat*out[0]
+               
         write_data(hdul, f_out, obj, ma, i)
 
 def func_patt_corr(obj, i):

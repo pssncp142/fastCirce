@@ -262,6 +262,13 @@ class fastCirceLibEng:
         patt_corr(self)
         self.last_dir = dir_to
 
+    def patt_corr_new(self):
+        dir_to = 'pattern_corr/'
+        if not os.path.isdir(dir_to):
+            os.mkdir(dir_to)
+        patt_corr_new(self)
+        self.last_dir = dir_to
+
     def cosmic_ray_rem(self):
         dir_to = 'cosmic_ray_rem/'
         if not os.path.isdir(dir_to):
@@ -281,12 +288,14 @@ class fastCirceLibEng:
         if self.linearity == 1:
             self.do_linearity()
         self.frame_sub()
+        if self.patt_corr_opt == 1:
+            self.patt_corr_new()
         if self.flat_div == 1:
             self.flat_divide()
         if self.pix_mask == 1:
             self.bad_pix_int()
-        if self.patt_corr_opt == 1:
-            self.patt_corr()
+        #if self.patt_corr_opt == 1:
+        #    self.patt_corr()
         if self.cosmic_ray == 1:
             self.cosmic_ray_rem()
         self.final_copy()
