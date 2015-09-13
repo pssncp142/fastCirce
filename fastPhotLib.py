@@ -3,11 +3,13 @@ import pyfits as fits
 from numpy import *
 import os, re
 
-frame_mod = '3-1'
+frame_mod = '2-1'
 path = 'reduced_data/'
 path_out = 'photometry/'
 
-f_name = ['CIRCE2015-03-09-0227.fits']
+f_name = open('files').read().split('\n')
+
+#f_name = ['CIRCE2015-03-09-0227.fits']
 
 patt = 'CIRCE((\w+)-(\w+)-(\w+)-(\w+)).fits'
 
@@ -41,4 +43,5 @@ def prepare_phot(name):
 
             
 if __name__ == '__main__':
-    prepare_phot(f_name[0])
+    for f in f_name:
+        prepare_phot(f)
