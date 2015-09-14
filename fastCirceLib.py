@@ -27,12 +27,15 @@ numcpu = 5
 
 def do_linearity(obj):
 
-    #pol = poly1d([2.490898e-14, -7.398100e-10, 1.106431e-5, 0.9701104, 0 ])
     pol = poly1d([  5.84302932e-14,  -2.49974727e-09,   3.95082939e-05,
          9.74597509e-01,   0])    
     print sep
     print 'Starting linearity correction...'
-    dark = fits.open(obj.mst_dark)
+    hdu = fits.open(obj.mst_dark)
+    dark = zeros([hdu[1].data.shape[0], hdu[1].data.shape[1], len(hdu)-1])
+    for i in range(1, len(hdu)):
+        dark[:,:,i-1] = hdu[i].data
+    hdu.close()
     sz = len(obj.files)
     
     for j in range(sz/numcpu):
@@ -129,9 +132,6 @@ def patt_corr_new(obj):
     flat = fits.open(obj.mast_flat)[0].data
     print sep
     print 'Start pickup noise correction...'
-
-    #hdu = fits.PrimaryHDU(flat)
-    #hdu.writeto('test.fits', clobber=True)
 
     sz = len(obj.files)
 
@@ -333,7 +333,7 @@ def frame_3_1(obj, f):
 
         hdul_out = fits.HDUList(hdul_out)
         write_data(hdul_out, f_out, obj, ma, i)
-
+'''
 def func_linearity(obj, pol, dark, i):
 
     f = obj.files[i]
@@ -352,12 +352,39 @@ def func_linearity(obj, pol, dark, i):
     for i in arange(1,len(hdul)):
         xx = (i-1) % hdul_out[0].header['NGROUPS'] + 1
         im = hdul[i].data - dark[xx].data
-            #im = hdul[i].data - dark[xx].data
-            #im = hdul[i].data - dark[0].data[w_f:w_l+1,:]
         hdul[i].data = pol(im)
-            #hdul[i].data = im*coef[0] + im**2*coef[1] + \
-            #    im**3*coef[2] + im**4*coef[3]
         hdul_out.append(fits.ImageHDU(hdul[i].data, header=hdul[i].header))
+    hdul_out = fits.HDUList(hdul_out)
+    hdul_out.writeto('linearity/' + f, clobber=True)    
+'''
+
+
+def func_linearity(obj, pol, dark, i):
+
+    f = obj.files[i]
+    hdul = fits.open(obj.path + f)
+    print 'Processing ', obj.path + f
+    hdul_out = [fits.PrimaryHDU()]
+    hdul_out[0].header.update('W_Y_BEG', hdul[0].header['W_Y_BEG'])
+    hdul_out[0].header.update('W_Y_END', hdul[0].header['W_Y_END'])
+    hdul_out[0].header.update('NRAMPS', hdul[0].header['NRAMPS'])
+    hdul_out[0].header.update('NGROUPS', hdul[0].header['NGROUPS'])
+    hdul_out[0].header.update('NREADS', hdul[0].header['NREADS'])
+    hdul_out[0].header.update('MJD', hdul[0].header['MJD'])
+    w_f = hdul[0].header['W_Y_BEG']
+    w_l = hdul[0].header['W_Y_END']
+    ims = zeros([w_l-w_f+1, 2048, len(hdul)-1])
+    for i in range(1, len(hdul)):
+        ims[:,:,i-1] = hdul[i].data
+    darks = zeros([w_l-w_f+1, 2048, len(hdul)-1])
+    nramps = hdul[0].header['NRAMPS']
+    nreads = hdul[0].header['NGROUPS']
+    for i in range(nramps):
+        darks[:,:,nreads*i:nreads*(i+1)] = dark
+    ims[:,:,:] = pol(ims-darks) 
+    for i in arange(1,len(hdul)):
+        hdul_out.append(fits.ImageHDU(ims[:,:,i-1], header=hdul[i].header))
+    hdul.close()
     hdul_out = fits.HDUList(hdul_out)
     hdul_out.writeto('linearity/' + f, clobber=True)    
 
@@ -564,7 +591,7 @@ def func_final_copy(obj, i):
         w_l = hdul[0].header['W_Y_END'] 
         im = zeros([w_l-w_f+1, 2048, len(hdul)])
         for j in range(1, len(hdul)):
-            im[:,:,j-1] = hdul[j].data/hdul[j].header['EXPTIME']
+            im[:,:,j-1] = hdul[j].data#/hdul[j].header['EXPTIME']
 
         if obj.comb_ramp == 1:
             hdul.append(fits.ImageHDU(median(im, axis=2)))
